@@ -1,38 +1,27 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
-	"math/rand"
+	"io"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
-
-	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
 var domain = "https://search-borderfree-kpsncigx2tramdps7fwjrnvofi.us-east-2.es.amazonaws.com"
+var index = "cupcakes"
+var endpt = domain + "/" + index + "/" + "_doc" + "/"
+
 var region = "us-east-2"
 var service = "es"
-var svc *dynamodb.DynamoDB
-
-const tableName = "Cupcake"
-const query = "select Time.S from cupcakes order by rand() limit 100"
-
-type queryResultType struct {
-	Datarows [][]string `json:"datarows"`
-}
-
 
 func makeRequest(method, endpoint string, body *strings.Reader) {
 
@@ -57,153 +46,97 @@ func makeRequest(method, endpoint string, body *strings.Reader) {
 	fmt.Println(resp.Status + "\n")
 }
 
-func sendJSONToES(js string) {
+func handleInsert(record events.DynamoDBEventRecord) {
 
-	fmt.Println("Starting Sending ...")
+	fmt.Println("Handling INSERT Event")
+	newImage := record.Change.NewImage
+	fmt.Println(newImage)
 
-	endpt := domain + "/test/_doc/1"
-	bd := `{"js":` + js + `}`
+	newTime := newImage["Time"].String()
+	newScore, err := newImage["Score"].Integer()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Printf("New row added with Time = %s and Score = %d\n", newTime, newScore)
+
+	endpoint := endpt + newTime
+	fmt.Println()
+
+	newImageJson, _ := json.Marshal(newImage)
+	fmt.Println("newImageJson: ")
+	fmt.Println(string(newImageJson))
+	body := strings.NewReader(string(newImageJson))
+	client := &http.Client{}
+	makeRequest("PUT", endpoint, body)
+
+	fmt.Println("Done handling INSERT Event")
+}
+
+func handleModify(record events.DynamoDBEventRecord) {
+
+	fmt.Println("Handling MODIFY Event")
+	fmt.Println(record.Change.OldImage)
+	fmt.Println(record.Change.NewImage)
+
+	oldTime := record.Change.OldImage["Time"].String()
+	oldScore, _ := record.Change.OldImage["Score"].Integer()
+	newScore, _ := record.Change.NewImage["Score"].Integer()
+	fmt.Printf("Scores changed - OldScore =  %d , NewScore = %d\n", oldScore, newScore)
+
+	endpoint := endpt + oldTime + "/_update"
+	fmt.Println()
+
+	newImage := record.Change.NewImage
+	newImageJson, _ := json.Marshal(newImage)
+	bd := `{"doc":` + string(newImageJson) + `}`
 	fmt.Println("update query: ")
 	fmt.Println(bd)
 	body := strings.NewReader(bd)
-	makeRequest("PUT", endpt, body)
+	makeRequest("POST", endpoint, body)
 
-	fmt.Println("Done Sending")
+	fmt.Println("Done handling MODIFYEvent")
+
 }
 
-func getData(query string) string {
+func handleRemove(record events.DynamoDBEventRecord) {
 
-	fmt.Println("Getting Data from ES")
+	fmt.Println("Handling REMOVE Event")
+	fmt.Println(record.Change.OldImage)
+
+	oldTime := record.Change.OldImage["Time"].String()
+	oldScore, _ := record.Change.OldImage["Score"].Integer()
+
+	fmt.Printf("Row removed with Time = %s and Score = %d\n", oldTime, oldScore)
+
+	endpoint := endpt + oldTime
 	fmt.Println()
+	body := strings.NewReader("")
+	makeRequest("DELETE", endpoint, body)
 
-	endpoint := domain + "/_opendistro/_sql"
-	queryJson := `{"query":` + query + `}`
-	fmt.Println("queryJson:")
-	fmt.Println(queryJson)
-	body := strings.NewReader(string(queryJson))
-	client := &http.Client{}
-
-	req, err := http.NewRequest(http.MethodPost, endpoint, body)
-	if err != nil {
-		fmt.Println("Error while forming HTTP request")
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	credentials := credentials.NewStaticCredentials("AKIAZXNVXOZFIKKUOSOQ", "6rpB7DjNhy0gJXzXklU/+Lsl9tLPMEtFtfhFD8Pz", "")
-	signer := v4.NewSigner(credentials)
-
-	req.Header.Add("Content-Type", "application/json")
-
-	// Sign the request, send it, and print the response
-	signer.Sign(req, body, service, region, time.Now())
-	resp, err := client.Do(req)
-	if err != nil {
-		fmt.Println("Error while sending HTTP request")
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	defer resp.Body.Close()
-
-	responseData, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-		os.Exit(1)
-	}
-
-	responseString := string(responseData)
-	fmt.Println("Query Data Result:")
-	fmt.Println(responseString)
-
-	fmt.Println("Done Getting Data")
-
-	return responseString
+	fmt.Println("Done handling REMOVE Event")
 }
 
-func connectDynamo() {
+func HandleRequest(ctx context.Context, e events.DynamoDBEvent) {
 
-	sess, err := session.NewSession()
-	if err != nil {
-		fmt.Println("Error creating session ", err)
-		os.Exit(1)
-	}
+	fmt.Println("---------------------------------------")
+	fmt.Println(e)
 
-	// Create DynamoDB client
-	svc = dynamodb.New(sess)
-
-}
-
-func updateDynamoDBItem(tym, score, tableName string) {
-
-	fmt.Println("Updating Item")
-	input := &dynamodb.UpdateItemInput{
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
-			":s": {
-				N: aws.String(score),
-			},
-			":u": {
-				S: aws.String(time.Now().String()),
-			},
-		},
-		TableName: aws.String(tableName),
-		Key: map[string]*dynamodb.AttributeValue{
-			"Time": {
-				S: aws.String(tym),
-			},
-		},
-		ReturnValues:     aws.String("UPDATED_NEW"),
-		UpdateExpression: aws.String("set Score = :s, UpdatedTime = :u"),
-	}
-
-	_, err := svc.UpdateItem(input)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-
-	fmt.Println("Successfully updated ")
-}
-
-func Handler() {
-
-	p := fmt.Println
-	p("-----------------------------------------------------------")
-	p("Running New Job")
-	p("****Connecting Dynamo****")
-	connectDynamo()
-	queryResultJson := getData(query)
-	queryResult := queryResultType{}
-	json.Unmarshal([]byte(queryResultJson), &queryResult)
-
-	var tym = ""
-	var score = ""
-	s1 := rand.NewSource(time.Now().UnixNano())
-	r1 := rand.New(s1)
-	var updatedValues = map[string]string{}
-
-	for _, row := range queryResult.Datarows {
-
-		tym = row[0]
-		score = strconv.Itoa(r1.Intn(100))
-		fmt.Printf("Updating row for Time = %s with Score = %s", tym, score)
-		updateDynamoDBItem(tym, score, tableName)
-		updatedValues[tym] = score
+	for _, record := range e.Records {
+		fmt.Printf("Processing request data for event ID %s, type %s.\n", record.EventID, record.EventName)
+		if record.EventName == "INSERT" {
+			handleInsert(record)
+		} else if record.EventName == "MODIFY" {
+			handleModify(record)
+		} else if record.EventName == "REMOVE" {
+			handleRemove(record)
+		}
 
 	}
 
-	updateValuesString, err := json.Marshal(updatedValues)
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-
-	p(string(updateValuesString))
-	p("sending the above json of update info to ES ")
-	sendJSONToES(string(updateValuesString))
-
+	fmt.Println("---------------------------------------")
 }
 
 func main() {
-	lambda.Start(Handler)
+	lambda.Start(HandleRequest)
 }
