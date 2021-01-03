@@ -8,4 +8,5 @@ https://click.pstmrk.it/2sm/www.hackerrank.com%2Ftests%2F5dk6853b1m6%2Flogin%3Fb
 
 https://drive.google.com/file/d/1qnQr3P6xsjKIEJb2z_9tdomZS1TWNvjh/view?usp=sharing
 
-https://us02web.zoom.us/j/81115017846?pwd=SThXZDFKa1p6NkdMbnRUeVpIOE0xUT09
+
+https://gitlab.com/scriptkid/csgo-fake-cheat-public/-/blob/master/ScriptKidAntiCheat%20-%20CSGO%20Edition/Classes/Win32/Kernel32.cs
