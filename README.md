@@ -10,7 +10,3 @@ https://drive.google.com/file/d/1qnQr3P6xsjKIEJb2z_9tdomZS1TWNvjh/view?usp=shari
 
 
 https://gitlab.com/scriptkid/csgo-fake-cheat-public/-/blob/master/ScriptKidAntiCheat%20-%20CSGO%20Edition/Classes/Win32/Kernel32.cs
-
-.cpy file mein line 112 pe occurs 7 times likha hai . iska tag 1 hi baar likhna hai.
- 
-aur 118 pe  - 06 RT-CLOSURE-CD OCCURS 4 TIMES PIC X(03)
