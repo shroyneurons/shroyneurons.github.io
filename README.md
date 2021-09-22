@@ -10,3 +10,6 @@ https://gitlab.com/scriptkid/csgo-fake-cheat-public/-/blob/master/ScriptKidAntiC
 
 https://assessment.hackerearth.com/challenges/test/practice-test-34885/
 https://www.hackerearth.com/challenges/test/aes-bangalore-online-coding-test-2/?login=cdbea202533c925b691e950769b63429
+
+
+https://www.hackerrank.com/test/63ek10mhil5/60d306ab105867d80fca544041154273
